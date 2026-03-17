@@ -1,0 +1,22 @@
+# ── Secrets & Credentials ────────────────────────
+.env
+*.pem
+id_rsa
+id_rsa.pub
+config
+
+# ── Python ───────────────────────────────────────
+__pycache__/
+*.py[cod]
+*.pyo
+venv/
+.venv/
+env/
+*.egg-info/
+dist/
+build/
+
+# ── OS Files ─────────────────────────────────────
+.DS_Store
+Thumbs.db
+desktop.ini
