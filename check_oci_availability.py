@@ -50,12 +50,12 @@ def send_telegram_message(message):
     try:
         requests.post(url, json=payload, timeout=5)
     except Exception as e:
-        log(f"Failed to send Telegram message: {e}", "⚠️")
+        log(f"Failed to send Telegram message: {e}")
 
 
-def log(msg, emoji=""):
+def log(msg, prefix="INFO"):
     ts = datetime.now().strftime("%H:%M:%S")
-    print(f"[{ts}] {emoji}  {msg}")
+    print(f"[{ts}] [{prefix}]  {msg}")
 
 
 def load_ssh_key():
@@ -80,14 +80,14 @@ def fetch_ubuntu_arm_image(compute, compartment_id):
         ).data
         if images:
             img = images[0]
-            log(f"Found image: {img.display_name}", "🖼️")
-            log(f"Image OCID : {img.id}", "🔑")
+            log(f"Found image: {img.display_name}")
+            log(f"Image OCID : {img.id}", "KEY")
             return img.id
         else:
-            log(f"No {OS_NAME} {OS_VERSION} {SHAPE} images found in your tenancy!", "❌")
+            log(f"No {OS_NAME} {OS_VERSION} {SHAPE} images found in your tenancy!", "ERROR")
             return None
     except Exception as e:
-        log(f"Failed to fetch image list: {e}", "❌")
+        log(f"Failed to fetch image list: {e}", "ERROR")
         return None
 
 
@@ -100,7 +100,7 @@ def check_shape_availability(compute, compartment_id, availability_domain):
         ).data
         return any(s.shape == SHAPE for s in shapes)
     except Exception as e:
-        log(f"Shape check error for {availability_domain}: {e}", "⚠️")
+        log(f"Shape check error for {availability_domain}: {e}", "WARN")
         return False
 
 
@@ -162,13 +162,13 @@ def print_availability_summary(results: dict):
     for ad, status in results.items():
         ad_short = ad.replace("SIny:", "")
         if status == "AVAILABLE":
-            status_str = "✅  AVAILABLE      "
+            status_str = "AVAILABLE      "
         elif status == "NO CAPACITY":
-            status_str = "❌  NO CAPACITY    "
+            status_str = "NO CAPACITY    "
         elif status == "NOT LISTED":
-            status_str = "⛔  NOT LISTED     "
+            status_str = "NOT LISTED     "
         else:
-            status_str = f"⚠️  {status[:14]:<14}"
+            status_str = f"{status[:14]:<14}"
         print(f"  │  {ad_short:<31}│  {status_str}│")
     print("  └─────────────────────────────────┴──────────────────┘")
     print()
@@ -182,13 +182,13 @@ def run():
     print("  ╔══════════════════════════════════════════════════╗")
     print("  ║    OCI Free Tier Instance Availability Checker   ║")
     print("  ╚══════════════════════════════════════════════════╝")
-    log(f"Region : {REGION}", "🌍")
-    log(f"Shape  : {SHAPE} ({OCPUS} OCPUs, {MEMORY_GB}GB RAM)", "⚙️")
-    log(f"Mode   : {'AUTO-LAUNCH when found 🚀' if LAUNCH_IF_FOUND else 'CHECK ONLY (no launch)'}", "📋")
+    log(f"Region : {REGION}")
+    log(f"Shape  : {SHAPE} ({OCPUS} OCPUs, {MEMORY_GB}GB RAM)")
+    log(f"Mode   : {'AUTO-LAUNCH when found' if LAUNCH_IF_FOUND else 'CHECK ONLY (no launch)'}")
     if ssh_public_key:
-        log("SSH key loaded from id_rsa.pub", "🔐")
+        log("SSH key loaded from id_rsa.pub", "KEY")
     else:
-        log("No id_rsa.pub found — instance will launch without SSH key!", "⚠️")
+        log("No id_rsa.pub found — instance will launch without SSH key!", "WARN")
     print()
 
     # Load OCI config from the .env values
@@ -202,11 +202,11 @@ def run():
         }
         oci.config.validate_config(config)
     except KeyError as e:
-        print(f"\n❌ Missing required environment variable: {e}")
+        print(f"\n[ERROR] Missing required environment variable: {e}")
         print("   Copy .env.example → .env and fill in all required values.")
         return
     except Exception as e:
-        print(f"\n❌ OCI config error: {e}")
+        print(f"\n[ERROR] OCI config error: {e}")
         return
 
     compute = oci.core.ComputeClient(config)
@@ -216,29 +216,29 @@ def run():
     try:
         ads = identity.list_availability_domains(compartment_id=os.environ["OCI_TENANCY_OCID"]).data
         ad_names = [ad.name for ad in ads]
-        log(f"Found {len(ad_names)} Availability Domains in {REGION}.", "🏢")
+        log(f"Found {len(ad_names)} Availability Domains in {REGION}.")
     except Exception as e:
-        print(f"\n❌ Failed to fetch Availability Domains: {e}")
+        print(f"\n[ERROR] Failed to fetch Availability Domains: {e}")
         return
 
     send_telegram_message(
-        f"🔄 <b>OCI Auto-Launcher Started</b>\n"
+        f"[START] <b>OCI Auto-Launcher Started</b>\n"
         f"Monitoring <b>{REGION}</b> ({len(ad_names)} ADs) for Free Tier shape string <code>{SHAPE}</code>.\n"
-        f"⏱ Checking every <b>{POLL_SECONDS}s</b> — status update every "
+        f"Checking every <b>{POLL_SECONDS}s</b> — status update every "
         f"<b>{POLL_SECONDS * 200 // 3600}h {(POLL_SECONDS * 200 % 3600) // 60}m</b>."
     )
 
     # Dynamically fetch the correct image OCID
-    log(f"Looking up latest {OS_NAME} {OS_VERSION} image...", "🔍")
+    log(f"Looking up latest {OS_NAME} {OS_VERSION} image...")
     image_id = fetch_ubuntu_arm_image(compute, COMPARTMENT_ID)
     if not image_id:
-        print(f"\n❌ Could not find a valid {OS_NAME} {OS_VERSION} image. Check your OCI permissions or region.")
+        print(f"\n[ERROR] Could not find a valid {OS_NAME} {OS_VERSION} image. Check your OCI permissions or region.")
         return
 
     attempt = 0
     while True:
         attempt += 1
-        log(f"━━━ Scan #{attempt} — checking all zones within {REGION} ━━━", "📡")
+        log(f"━━━ Scan #{attempt} — checking all zones within {REGION} ━━━", "SCAN")
 
         # Send a status ping every 200 scans
         if attempt % 200 == 0:
@@ -248,7 +248,7 @@ def run():
             minutes = remainder // 60
             elapsed_str = f"{hours}h {minutes}m" if hours else f"{minutes}m"
             send_telegram_message(
-                f"⏱️ <b>OCI Status Update</b>\n"
+                f"[STATUS] <b>OCI Status Update</b>\n"
                 f"Scan <b>#{attempt}</b> completed ({elapsed_str} elapsed).\n"
                 f"Still looking for free capacity in <b>{REGION}</b> — will keep trying!"
             )
@@ -266,7 +266,7 @@ def run():
                 ad_results[ad] = "AVAILABLE"
                 continue
 
-            log(f"Shape found in {ad} — attempting launch...", "🚀")
+            log(f"Shape found in {ad} — attempting launch...", "LAUNCH")
 
             instance, error = try_launch_instance(compute, image_id, ad, ssh_public_key)
 
@@ -274,14 +274,14 @@ def run():
                 ad_results[ad] = "AVAILABLE"
                 print_availability_summary(ad_results)
                 print("  " + "="*48)
-                print("  🎉  FREE INSTANCE SUCCESSFULLY CREATED!")
-                print(f"  🆔  Instance ID : {instance.id}")
-                print(f"  📍  Zone        : {instance.availability_domain}")
-                print(f"  📊  Status      : {instance.lifecycle_state}")
-                print("  🌐  Go to: OCI Console → Compute → Instances")
+                print("  [SUCCESS] FREE INSTANCE SUCCESSFULLY CREATED!")
+                print(f"  ID       : {instance.id}")
+                print(f"  Zone     : {instance.availability_domain}")
+                print(f"  Status   : {instance.lifecycle_state}")
+                print("  Console  : OCI Console → Compute → Instances")
                 print("  " + "="*48 + "\n")
                 send_telegram_message(
-                    f"🎉 <b>SUCCESS! Instance Created!</b>\n\n"
+                    f"[SUCCESS] <b>Instance Created!</b>\n\n"
                     f"<b>Region:</b> {REGION}\n<b>AD:</b> <code>{instance.availability_domain}</code>\n"
                     f"<b>ID:</b> <code>{instance.id}</code>\n\nCheck your OCI Console!"
                 )
@@ -294,25 +294,25 @@ def run():
                 elif "LimitExceeded" in msg:
                     ad_results[ad] = "LIMIT EXCEEDED"
                     print_availability_summary(ad_results)
-                    print("  ⚠️  Limit Exceeded: You may already have a free instance running.")
-                    print("      Check: OCI Console → Compute → Instances\n")
-                    send_telegram_message("❌ <b>Limit Exceeded</b>\nOracle says you already hit your free tier limit. Script stopping.")
+                    print("  [WARN] Limit Exceeded: You may already have a free instance running.")
+                    print("         Check: OCI Console → Compute → Instances\n")
+                    send_telegram_message("[ERROR] <b>Limit Exceeded</b>\nOracle says you already hit your free tier limit. Script stopping.")
                     return
                 elif "NotAuthorizedOrNotFound" in msg:
                     ad_results[ad] = "AUTH ERROR"
                     print_availability_summary(ad_results)
-                    print("  🔐  Auth Error: Check your credentials in .env\n")
-                    send_telegram_message("❌ <b>Auth Error</b>\nCheck OCI API credentials in your .env file. Script stopping.")
+                    print("  [ERROR] Auth Error: Check your credentials in .env\n")
+                    send_telegram_message("[ERROR] <b>Auth Error</b>\nCheck OCI API credentials in your .env file. Script stopping.")
                     return
                 else:
                     ad_results[ad] = "ERROR"
-                    log(f"Unexpected error in {ad}: {msg}", "⚠️")
+                    log(f"Unexpected error in {ad}: {msg}", "ERROR")
 
         print_availability_summary(ad_results)
 
         any_available = any(v == "AVAILABLE" for v in ad_results.values())
         if not any_available:
-            log(f"No free slots found. Retrying in {POLL_SECONDS}s...", "⏳")
+            log(f"No free slots found. Retrying in {POLL_SECONDS}s...", "WAIT")
             time.sleep(POLL_SECONDS)
 
 

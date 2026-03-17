@@ -1,10 +1,10 @@
-# 🚀 OCI Free Tier ARM Instance Auto-Launcher
+# OCI Free Tier ARM Instance Auto-Launcher
 
 A Python script that continuously monitors Oracle Cloud Infrastructure (OCI) for available **free tier ARM (A1.Flex) capacity** in your configured region and automatically launches an instance the moment one becomes available. Sends Telegram notifications on key events.
 
 ---
 
-## ✨ Features
+## Features
 
 - Automatically detects and polls **all** Availability Domains in your chosen region
 - Auto-launches the instance the moment capacity is detected
@@ -15,7 +15,7 @@ A Python script that continuously monitors Oracle Cloud Infrastructure (OCI) for
 
 ---
 
-## 📁 Project Structure
+## Project Structure
 
 ```
 oci-free-tier-auto-launcher/
@@ -29,7 +29,7 @@ oci-free-tier-auto-launcher/
 
 ---
 
-## ⚙️ Setup
+## Setup
 
 ### 1. Install dependencies
 
@@ -63,11 +63,45 @@ ssh-keygen -t rsa -b 4096
 ```bash
 cd oci-free-tier-auto-launcher
 python check_oci_availability.py
+
+# Or to run it continuously in the background (Linux/Mac):
+# nohup python -u check_oci_availability.py > bot_log.txt 2>&1 &
+```
+
+### Example Output
+
+```text
+  ╔══════════════════════════════════════════════════╗
+  ║    OCI Free Tier Instance Availability Checker   ║
+  ╚══════════════════════════════════════════════════╝
+[18:16:38]  Region : us-ashburn-1
+[18:16:38]  Shape  : VM.Standard.A1.Flex (4 OCPUs, 24GB RAM)
+[18:16:38]  Mode   : AUTO-LAUNCH when found
+[18:16:38]  SSH key loaded from id_rsa.pub
+
+[18:16:42]  Found 3 Availability Domains in us-ashburn-1.
+[18:16:45]  Looking up latest Canonical Ubuntu 22.04 image...
+[18:16:47]  Found image: Canonical-Ubuntu-22.04-aarch64-...
+[18:16:47]  Image OCID : ocid1.image.oc1.iad.aaaaaaaahk7...
+[18:16:47]  ━━━ Scan #1 — checking all zones within us-ashburn-1 ━━━
+[18:16:48]  Shape found in SIny:US-ASHBURN-AD-1 — attempting launch...
+[18:16:50]  Shape found in SIny:US-ASHBURN-AD-2 — attempting launch...
+[18:16:54]  Shape found in SIny:US-ASHBURN-AD-3 — attempting launch...
+
+  ┌─────────────────────────────────┬──────────────────┐
+  │  Availability Domain            │  Free ARM Space  │
+  ├─────────────────────────────────┼──────────────────┤
+  │  US-ASHBURN-AD-1                │  NO CAPACITY     │
+  │  US-ASHBURN-AD-2                │  NO CAPACITY     │
+  │  US-ASHBURN-AD-3                │  NO CAPACITY     │
+  └─────────────────────────────────┴──────────────────┘
+
+[18:16:56] ⏳  No free slots found. Retrying in 60s...
 ```
 
 ---
 
-## 🔑 How to Get Your Credentials
+## How to Get Your Credentials
 
 ### `OCI_USER_OCID` and `OCI_TENANCY_OCID`
 
@@ -144,7 +178,7 @@ Leave `TELEGRAM_BOT_TOKEN` and `TELEGRAM_CHAT_ID` blank in `.env` to disable not
 
 ---
 
-## 🛡️ Security Notes
+## Security Notes
 
 - `.env`, `*.pem`, `id_rsa.pub`, and `config` are all listed in `.gitignore` — they will never be committed to git
 - Only commit `.env.example` (the template with no real values)
@@ -152,17 +186,17 @@ Leave `TELEGRAM_BOT_TOKEN` and `TELEGRAM_CHAT_ID` blank in `.env` to disable not
 
 ---
 
-## 📋 Environment Variables Reference
+## Environment Variables Reference
 
 | Variable | Required | Description |
 |---|---|---|
-| `OCI_USER_OCID` | ✅ | Your OCI user OCID |
-| `OCI_TENANCY_OCID` | ✅ | Your tenancy OCID |
-| `OCI_FINGERPRINT` | ✅ | API key fingerprint |
-| `OCI_KEY_FILE` | ✅ | Path to your `.pem` private key |
-| `OCI_REGION` | ✅ | OCI region (e.g., `us-ashburn-1`, `eu-frankfurt-1`) |
-| `OCI_COMPARTMENT_ID` | ✅ | Compartment OCID to launch the instance in |
-| `OCI_SUBNET_ID` | ✅ | Subnet OCID for the instance's network |
+| `OCI_USER_OCID` | Yes | Your OCI user OCID |
+| `OCI_TENANCY_OCID` | Yes | Your tenancy OCID |
+| `OCI_FINGERPRINT` | Yes | API key fingerprint |
+| `OCI_KEY_FILE` | Yes | Path to your `.pem` private key |
+| `OCI_REGION` | Yes | OCI region (e.g., `us-ashburn-1`, `eu-frankfurt-1`) |
+| `OCI_COMPARTMENT_ID` | Yes | Compartment OCID to launch the instance in |
+| `OCI_SUBNET_ID` | Yes | Subnet OCID for the instance's network |
 | `SHAPE` | optional | Instance shape (default: `VM.Standard.A1.Flex`) |
 | `OCPUS` | optional | Number of OCPUs (default: `4`) |
 | `MEMORY_GB` | optional | RAM in GB (default: `24`) |
@@ -175,6 +209,6 @@ Leave `TELEGRAM_BOT_TOKEN` and `TELEGRAM_CHAT_ID` blank in `.env` to disable not
 
 ---
 
-## 📜 License
+## License
 
 MIT — free to use, modify, and share.
