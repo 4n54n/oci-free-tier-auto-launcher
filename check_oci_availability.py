@@ -186,7 +186,6 @@ def run():
 
     oci.config.validate_config(config)
 
-    # increased timeout
     compute = oci.core.ComputeClient(
         config,
         timeout=(10, 180),
