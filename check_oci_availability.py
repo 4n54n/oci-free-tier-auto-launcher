@@ -1,8 +1,3 @@
-"""
-OCI Free Tier Instance Availability Checker & Auto-Launcher
-SAFE VERSION — handles timeout / request errors / retries
-"""
-
 import os
 import oci
 import time
@@ -191,7 +186,7 @@ def run():
 
     oci.config.validate_config(config)
 
-    # ✅ increased timeout here
+    # increased timeout
     compute = oci.core.ComputeClient(
         config,
         timeout=(10, 180),
