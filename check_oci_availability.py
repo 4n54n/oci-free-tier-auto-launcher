@@ -2,6 +2,7 @@ import os
 import oci
 import time
 import requests
+import traceback
 from datetime import datetime
 from dotenv import load_dotenv
 
@@ -27,34 +28,62 @@ TELEGRAM_CHAT_ID = os.getenv("TELEGRAM_CHAT_ID", "")
 
 
 # ─────────────────────────────────────────
+# Logging
+# ─────────────────────────────────────────
 
 def log(msg, prefix="INFO"):
     ts = datetime.now().strftime("%H:%M:%S")
     print(f"[{ts}] [{prefix}] {msg}")
 
 
+# ─────────────────────────────────────────
+# Telegram
+# ─────────────────────────────────────────
+
 def send_telegram_message(message):
-    if not TELEGRAM_BOT_TOKEN:
+
+    if not TELEGRAM_BOT_TOKEN or not TELEGRAM_CHAT_ID:
         return
 
     try:
+
         requests.post(
             f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/sendMessage",
             json={
                 "chat_id": TELEGRAM_CHAT_ID,
-                "text": message,
+                "text": message[:4000],
                 "parse_mode": "HTML",
             },
             timeout=5,
         )
+
     except Exception:
         pass
 
 
+def send_exception(prefix, e):
+
+    tb = traceback.format_exc()
+
+    msg = (
+        f"[ERROR] {prefix}\n\n"
+        f"<code>{str(e)}</code>\n\n"
+        f"<code>{tb[-2000:]}</code>"
+    )
+
+    send_telegram_message(msg)
+
+
+# ─────────────────────────────────────────
+# SSH Key
+# ─────────────────────────────────────────
+
 def load_ssh_key():
+
     path = os.path.join(os.path.dirname(__file__), "id_rsa.pub")
 
     if os.path.exists(path):
+
         with open(path) as f:
             return f.read().strip()
 
@@ -62,7 +91,7 @@ def load_ssh_key():
 
 
 # ─────────────────────────────────────────
-# IMAGE
+# Fetch Image
 # ─────────────────────────────────────────
 
 def fetch_ubuntu_arm_image(compute, compartment_id):
@@ -81,18 +110,22 @@ def fetch_ubuntu_arm_image(compute, compartment_id):
             ).data
 
             if images:
+
                 log("Image found")
                 return images[0].id
 
         except Exception as e:
+
             log(f"Image fetch error {i+1}/3: {e}", "WARN")
-            time.sleep(2)
+            send_exception("ImageFetch", e)
+
+            time.sleep(3)
 
     return None
 
 
 # ─────────────────────────────────────────
-# SHAPE CHECK
+# Check Shape
 # ─────────────────────────────────────────
 
 def check_shape_availability(compute, compartment_id, ad):
@@ -109,34 +142,43 @@ def check_shape_availability(compute, compartment_id, ad):
     except Exception as e:
 
         log(f"Shape check error {ad}: {e}", "WARN")
+        send_exception(f"ShapeCheck {ad}", e)
 
         return False
 
 
 # ─────────────────────────────────────────
-# LAUNCH WITH RETRY + TIMEOUT HANDLE
+# Launch Instance (retry + error safe)
 # ─────────────────────────────────────────
 
 def try_launch_instance(compute, image_id, ad, ssh_key):
 
     details = oci.core.models.LaunchInstanceDetails(
+
         availability_domain=ad,
+
         compartment_id=COMPARTMENT_ID,
+
         shape=SHAPE,
+
         shape_config=oci.core.models.LaunchInstanceShapeConfigDetails(
             ocpus=OCPUS,
             memory_in_gbs=MEMORY_GB,
         ),
+
         source_details=oci.core.models.InstanceSourceViaImageDetails(
             image_id=image_id,
             source_type="image",
             boot_volume_size_in_gbs=50,
         ),
+
         create_vnic_details=oci.core.models.CreateVnicDetails(
             subnet_id=SUBNET_ID,
             assign_public_ip=True,
         ),
+
         display_name=f"free-arm-{datetime.now().strftime('%H%M%S')}",
+
         metadata={"ssh_authorized_keys": ssh_key} if ssh_key else {},
     )
 
@@ -150,23 +192,28 @@ def try_launch_instance(compute, image_id, ad, ssh_key):
 
         except oci.exceptions.ServiceError as e:
 
+            send_exception("ServiceError", e)
             return None, e
 
         except oci.exceptions.RequestException as e:
 
             log(f"Timeout {i+1}/3", "WARN")
+            send_exception("RequestException", e)
+
             time.sleep(3)
 
         except Exception as e:
 
-            log(f"Unknown launch error {i+1}/3: {e}", "WARN")
+            log(f"Launch exception {i+1}/3: {e}", "WARN")
+            send_exception("LaunchException", e)
+
             time.sleep(3)
 
     return None, "TIMEOUT"
 
 
 # ─────────────────────────────────────────
-# MAIN
+# Main
 # ─────────────────────────────────────────
 
 def run():
@@ -184,7 +231,16 @@ def run():
         ),
     }
 
-    oci.config.validate_config(config)
+    try:
+
+        oci.config.validate_config(config)
+
+    except Exception as e:
+
+        log(f"Config error: {e}", "ERROR")
+        send_exception("ConfigError", e)
+
+        return
 
     compute = oci.core.ComputeClient(
         config,
@@ -193,74 +249,108 @@ def run():
 
     identity = oci.identity.IdentityClient(config)
 
-    ads = identity.list_availability_domains(
-        os.environ["OCI_TENANCY_OCID"]
-    ).data
+    try:
+
+        ads = identity.list_availability_domains(
+            os.environ["OCI_TENANCY_OCID"]
+        ).data
+
+    except Exception as e:
+
+        log("Failed to fetch AD list", "ERROR")
+        send_exception("ADFetch", e)
+
+        return
 
     ad_names = [a.name for a in ads]
 
     log(f"Region {REGION}")
     log(f"AD count {len(ad_names)}")
 
+    send_telegram_message(
+        f"OCI Launcher started\nRegion: {REGION}\nAD count: {len(ad_names)}"
+    )
+
     image_id = fetch_ubuntu_arm_image(compute, COMPARTMENT_ID)
 
     if not image_id:
-        log("No image", "ERROR")
+
+        log("No image found", "ERROR")
+        send_telegram_message("ERROR: No image found")
+
         return
 
     attempt = 0
 
     while True:
 
-        attempt += 1
+        try:
 
-        log(f"SCAN {attempt}", "SCAN")
+            attempt += 1
 
-        for ad in ad_names:
+            log(f"SCAN {attempt}", "SCAN")
 
-            shape_ok = check_shape_availability(
-                compute,
-                COMPARTMENT_ID,
-                ad,
-            )
+            for ad in ad_names:
 
-            if not shape_ok:
-                continue
-
-            log(f"Trying {ad}", "LAUNCH")
-
-            inst, err = try_launch_instance(
-                compute,
-                image_id,
-                ad,
-                ssh_key,
-            )
-
-            if inst:
-
-                log("SUCCESS", "OK")
-
-                send_telegram_message(
-                    f"Instance created\n{inst.id}"
+                shape_ok = check_shape_availability(
+                    compute,
+                    COMPARTMENT_ID,
+                    ad,
                 )
 
-                return
+                if not shape_ok:
+                    continue
 
-            if err:
+                log(f"Attempt launch in {ad}", "LAUNCH")
 
-                msg = str(err)
+                inst, err = try_launch_instance(
+                    compute,
+                    image_id,
+                    ad,
+                    ssh_key,
+                )
 
-                if "Out of host capacity" in msg:
-                    log("No capacity")
+                if inst:
 
-                elif "LimitExceeded" in msg:
-                    log("Limit reached", "STOP")
+                    log("INSTANCE CREATED", "SUCCESS")
+
+                    send_telegram_message(
+                        f"Instance created\nAD: {inst.availability_domain}\nID: {inst.id}"
+                    )
+
                     return
 
-                else:
-                    log(msg, "ERR")
+                if err:
 
-        time.sleep(POLL_SECONDS)
+                    msg = str(err)
+
+                    if "Out of host capacity" in msg:
+
+                        log("No capacity")
+
+                    elif "LimitExceeded" in msg:
+
+                        log("Free tier limit reached", "STOP")
+
+                        send_telegram_message(
+                            "Free tier limit exceeded"
+                        )
+
+                        return
+
+                    else:
+
+                        log(msg, "ERROR")
+
+            time.sleep(POLL_SECONDS)
+
+        except Exception as e:
+
+            log(f"Main loop crash: {e}", "CRASH")
+
+            send_exception("MainLoop", e)
+
+            time.sleep(5)
 
 
 if __name__ == "__main__":
