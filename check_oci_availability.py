@@ -191,7 +191,14 @@ def try_launch_instance(compute, image_id, ad, ssh_key):
             return result.data, None
 
         except oci.exceptions.ServiceError as e:
-
+        
+            msg = str(e)
+        
+            # ignore frequent free-tier error
+            if "Out of host capacity" in msg:
+                log("Out of host capacity", "INFO")
+                return None, e
+        
             send_exception("ServiceError", e)
             return None, e
 
