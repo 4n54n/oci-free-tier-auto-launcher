@@ -1,5 +1,6 @@
 # ── Secrets & Credentials ────────────────────────
 .env
+*.env
 *.pem
 id_rsa
 id_rsa.pub

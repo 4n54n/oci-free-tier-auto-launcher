@@ -117,7 +117,7 @@ def try_launch_instance(compute, image_id, availability_domain, ssh_public_key):
         source_details=oci.core.models.InstanceSourceViaImageDetails(
             image_id=image_id,
             source_type="image",
-            boot_volume_size_in_gbs=50
+            boot_volume_size_in_gbs=150
         ),
         create_vnic_details=oci.core.models.CreateVnicDetails(
             subnet_id=SUBNET_ID,
