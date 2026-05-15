@@ -24,7 +24,7 @@ OS_NAME = os.getenv("OS_NAME", "Canonical Ubuntu")
 OS_VERSION = os.getenv("OS_VERSION", "22.04")
 
 TARGET_INSTANCE_COUNT = int(os.getenv("TARGET_INSTANCE_COUNT", 1))
-BOOT_VOLUME_SIZES = [int(x.strip()) for x in os.getenv("BOOT_VOLUME_SIZES", "150").split(",")]
+BOOT_VOLUME_SIZES = [int(x.strip()) for x in os.getenv("BOOT_VOLUME_SIZES", "100").split(",")]
 
 TELEGRAM_BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN", "")
 TELEGRAM_CHAT_ID = os.getenv("TELEGRAM_CHAT_ID", "")
