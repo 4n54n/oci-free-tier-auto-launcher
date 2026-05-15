@@ -1,6 +1,6 @@
-# OCI Free Tier ARM Instance Auto-Launcher
+# OCI Free Tier Instance Auto-Launcher ( ARM & AMD )
 
-A Python script that continuously monitors Oracle Cloud Infrastructure (OCI) for available **free tier ARM (A1.Flex) capacity** in your configured region and automatically launches an instance the moment one becomes available. Sends Telegram notifications on key events.
+A Python script that continuously monitors Oracle Cloud Infrastructure (OCI) for available free tier capacity in your configured region and automatically launches an instance the moment one becomes available. Sends Telegram notifications on key events.
 
 ---
 
