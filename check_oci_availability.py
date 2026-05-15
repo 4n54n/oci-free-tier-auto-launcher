@@ -23,6 +23,9 @@ LAUNCH_IF_FOUND = os.getenv("LAUNCH_IF_FOUND", "true").lower() == "true"
 OS_NAME = os.getenv("OS_NAME", "Canonical Ubuntu")
 OS_VERSION = os.getenv("OS_VERSION", "22.04")
 
+TARGET_INSTANCE_COUNT = int(os.getenv("TARGET_INSTANCE_COUNT", 1))
+BOOT_VOLUME_SIZES = [int(x.strip()) for x in os.getenv("BOOT_VOLUME_SIZES", "150").split(",")]
+
 TELEGRAM_BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN", "")
 TELEGRAM_CHAT_ID = os.getenv("TELEGRAM_CHAT_ID", "")
 
@@ -94,7 +97,7 @@ def load_ssh_key():
 # Fetch Image
 # ─────────────────────────────────────────
 
-def fetch_ubuntu_arm_image(compute, compartment_id):
+def fetch_image(compute, compartment_id):
 
     for i in range(3):
 
@@ -151,7 +154,7 @@ def check_shape_availability(compute, compartment_id, ad):
 # Launch Instance (retry + error safe)
 # ─────────────────────────────────────────
 
-def try_launch_instance(compute, image_id, ad, ssh_key):
+def try_launch_instance(compute, image_id, ad, ssh_key, boot_volume_size):
 
     details = oci.core.models.LaunchInstanceDetails(
 
@@ -161,15 +164,10 @@ def try_launch_instance(compute, image_id, ad, ssh_key):
 
         shape=SHAPE,
 
-        shape_config=oci.core.models.LaunchInstanceShapeConfigDetails(
-            ocpus=OCPUS,
-            memory_in_gbs=MEMORY_GB,
-        ),
-
         source_details=oci.core.models.InstanceSourceViaImageDetails(
             image_id=image_id,
             source_type="image",
-            boot_volume_size_in_gbs=150
+            boot_volume_size_in_gbs=boot_volume_size
         ),
 
         create_vnic_details=oci.core.models.CreateVnicDetails(
@@ -177,10 +175,16 @@ def try_launch_instance(compute, image_id, ad, ssh_key):
             assign_public_ip=True,
         ),
 
-        display_name=f"free-arm-{datetime.now().strftime('%H%M%S')}",
+        display_name=f"free-instance-{datetime.now().strftime('%H%M%S')}",
 
         metadata={"ssh_authorized_keys": ssh_key} if ssh_key else {},
     )
+
+    if "Flex" in SHAPE:
+        details.shape_config = oci.core.models.LaunchInstanceShapeConfigDetails(
+            ocpus=OCPUS,
+            memory_in_gbs=MEMORY_GB,
+        )
 
     for i in range(3):
 
@@ -278,7 +282,7 @@ def run():
         f"OCI Launcher started\nRegion: {REGION}\nAD count: {len(ad_names)}"
     )
 
-    image_id = fetch_ubuntu_arm_image(compute, COMPARTMENT_ID)
+    image_id = fetch_image(compute, COMPARTMENT_ID)
 
     if not image_id:
 
@@ -287,17 +291,21 @@ def run():
 
         return
 
+    instances_created = 0
     attempt = 0
 
-    while True:
+    while instances_created < TARGET_INSTANCE_COUNT:
 
         try:
 
             attempt += 1
 
-            log(f"SCAN {attempt}", "SCAN")
+            log(f"SCAN {attempt} (Created: {instances_created}/{TARGET_INSTANCE_COUNT})", "SCAN")
 
             for ad in ad_names:
+
+                if instances_created >= TARGET_INSTANCE_COUNT:
+                    break
 
                 shape_ok = check_shape_availability(
                     compute,
@@ -310,22 +318,25 @@ def run():
 
                 log(f"Attempt launch in {ad}", "LAUNCH")
 
+                boot_vol_size = BOOT_VOLUME_SIZES[min(instances_created, len(BOOT_VOLUME_SIZES) - 1)]
+
                 inst, err = try_launch_instance(
                     compute,
                     image_id,
                     ad,
                     ssh_key,
+                    boot_vol_size
                 )
 
                 if inst:
 
-                    log("INSTANCE CREATED", "SUCCESS")
+                    log(f"INSTANCE CREATED ({instances_created + 1}/{TARGET_INSTANCE_COUNT})", "SUCCESS")
 
                     send_telegram_message(
-                        f"Instance created\nAD: {inst.availability_domain}\nID: {inst.id}"
+                        f"Instance created\nAD: {inst.availability_domain}\nID: {inst.id}\nBoot Volume: {boot_vol_size}GB"
                     )
 
-                    return
+                    instances_created += 1
 
                 if err:
 
@@ -348,6 +359,10 @@ def run():
                     else:
 
                         log(msg, "ERROR")
+
+            if instances_created >= TARGET_INSTANCE_COUNT:
+                log(f"All {TARGET_INSTANCE_COUNT} instances created successfully.", "DONE")
+                return
 
             time.sleep(POLL_SECONDS)
 
